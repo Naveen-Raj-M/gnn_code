@@ -288,7 +288,7 @@ def oneStepMSE(simulator, dataloader, metadata, noise):
     simulator.eval()
     with torch.no_grad():
         scale = torch.sqrt(torch.tensor(metadata["acc_std"]) ** 2 + noise ** 2).cuda()
-        for data in valid_loader:
+        for data in dataloader:
             data = data.cuda()
             pred = simulator(data)
             mse = ((pred - data.y) * scale) ** 2
@@ -314,7 +314,7 @@ def rolloutMSE(simulator, dataset, noise):
             batch_count += 1
     return total_loss / batch_count
 
-def train(params, simulator, train_loader, valid_loader, valid_rollout_dataset):
+def train(params, simulator, train_loader, valid_loader, valid_rollout_dataset, data_path):
     loss_fn = torch.nn.MSELoss()
     optimizer = torch.optim.Adam(simulator.parameters(), lr=params["lr"])
     scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.1 ** (1 / 5e6))
@@ -348,7 +348,7 @@ def train(params, simulator, train_loader, valid_loader, valid_rollout_dataset):
             # evaluation
             if total_step % params["eval_interval"] == 0:
                 simulator.eval()
-                eval_loss, onestep_mse = oneStepMSE(simulator, valid_loader, valid_dataset.metadata, params["noise"])
+                eval_loss, onestep_mse = oneStepMSE(simulator, valid_loader, valid_rollout_dataset.metadata, params["noise"])
                 eval_loss_list.append((total_step, eval_loss))
                 onestep_mse_list.append((total_step, onestep_mse))
                 tqdm.write(f"\nEval: Loss: {eval_loss}, One Step MSE: {onestep_mse}")
@@ -370,7 +370,7 @@ def train(params, simulator, train_loader, valid_loader, valid_rollout_dataset):
                         "optimizer": optimizer.state_dict(),
                         "scheduler": scheduler.state_dict(),
                     },
-                    os.path.join(model_path, f"checkpoint_{total_step}.pt")
+                    os.path.join(data_path, f"checkpoint_{total_step}.pt")
                 )
     return train_loss_list, eval_loss_list, onestep_mse_list, rollout_mse_list
 
@@ -427,11 +427,13 @@ def main():
     DATASET_NAME = "WaterDropSample"
     OUTPUT_DIR = "./WaterDropSample"
     data_path = OUTPUT_DIR
-    model_path = os.path.join("temp", "models", DATASET_NAME)
-    rollout_path = os.path.join("temp", "rollouts", DATASET_NAME)
+    model_path = os.path.join(OUTPUT_DIR, "models")
+    rollout_path = os.path.join(OUTPUT_DIR, "rollouts")
+    os.makedirs(model_path, exist_ok=True)
+    os.makedirs(rollout_path, exist_ok=True)
 
     params = {
-        "epoch": 1,
+        "epoch": 150,
         "batch_size": 4,
         "lr": 1e-4,
         "noise": 3e-4,
@@ -452,7 +454,7 @@ def main():
     simulator = simulator.cuda()
 
     # train the model
-    train_loss_list, eval_loss_list, onestep_mse_list, rollout_mse_list = train(params, simulator, train_loader, valid_loader, valid_rollout_dataset)
+    train_loss_list, eval_loss_list, onestep_mse_list, rollout_mse_list = train(params, simulator, train_loader, valid_loader, valid_rollout_dataset, model_path)
 
     rollout_dataset = RolloutDataset(data_path, "valid")
     simulator.eval()
@@ -475,8 +477,8 @@ def main():
         rollout_out, 
         rollout_data["position"], 
         rollout_dataset.metadata, 
-        gif_directory=data_path,  # Specify your desired directory
-        gif_filename='rollout.gif'    # Specify your desired filename
+        gif_directory=rollout_path,  # Specify your desired directory
+        gif_filename='rollout_{params["epoch"]}.gif'    # Specify your desired filename
     )
 if __name__ == "__main__":
     main()
