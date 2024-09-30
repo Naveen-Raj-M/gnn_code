@@ -392,7 +392,10 @@ def visualize_prepare(ax, particle_type, position, metadata):
     return ax, position, points
 
 
-def visualize_pair(particle_type, position_pred, position_gt, metadata):
+def visualize_pair(particle_type, position_pred, position_gt, metadata, gif_directory, gif_filename):
+    # Ensure the directory exists
+    os.makedirs(gif_directory, exist_ok=True)
+
     fig, axes = plt.subplots(1, 2, figsize=(10, 5))
     plot_info = [
         visualize_prepare(axes[0], particle_type, position_gt, metadata),
@@ -400,8 +403,6 @@ def visualize_pair(particle_type, position_pred, position_gt, metadata):
     ]
     axes[0].set_title("Ground truth")
     axes[1].set_title("Prediction")
-
-    plt.close()
 
     def update(step_i):
         outputs = []
@@ -412,7 +413,14 @@ def visualize_pair(particle_type, position_pred, position_gt, metadata):
             outputs.append(line)
         return outputs
     
-    return animation.FuncAnimation(fig, update, frames=np.arange(0, position_gt.size(0)), interval=10, blit=True)
+    # Create the animation
+    anim = animation.FuncAnimation(fig, update, frames=np.arange(0, position_gt.size(0)), interval=10, blit=True)
+
+    # Save the animation as a GIF in the specified directory
+    gif_path = os.path.join(gif_directory, gif_filename)
+    anim.save(gif_path, writer='pillow', fps=30)
+
+    plt.close(fig)  # Close the figure to avoid displaying it inline
 
 
 def main():
@@ -462,8 +470,13 @@ def main():
     plt.legend()
     plt.show()
 
-    anim = visualize_pair(rollout_data["particle_type"], rollout_out, rollout_data["position"], rollout_dataset.metadata)
-    HTML(anim.to_html5_video())
-
+    visualize_pair(
+        rollout_data["particle_type"], 
+        rollout_out, 
+        rollout_data["position"], 
+        rollout_dataset.metadata, 
+        gif_directory=data_path,  # Specify your desired directory
+        gif_filename='rollout.gif'    # Specify your desired filename
+    )
 if __name__ == "__main__":
     main()
